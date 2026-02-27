@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AdsIncomeZone Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 font-sans">
+
+<!-- ================= LOGIN VIEW ================= -->
+<div id="loginView" class="min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded shadow w-full max-w-md">
+        <h2 class="text-2xl font-bold mb-6 text-center">Admin Login</h2>
+
+        <input id="email" type="email" placeholder="Admin Email"
+               class="w-full border p-2 mb-4 rounded">
+
+        <input id="password" type="password" placeholder="Password"
+               class="w-full border p-2 mb-6 rounded">
+
+        <button id="loginBtn"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded">
+            Login
+        </button>
+    </div>
+</div>
+
+<!-- ================= ADMIN PANEL ================= -->
+<div id="adminPanel" class="hidden p-6">
+
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Dashboard</h1>
+        <button id="logoutBtn"
+                class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+            Logout
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white p-6 rounded shadow">
+            <h2>Total Users</h2>
+            <p id="totalUsers" class="text-4xl font-bold mt-2">0</p>
+        </div>
+
+        <div class="bg-white p-6 rounded shadow">
+            <h2>Pending Withdrawals</h2>
+            <p id="pendingWithdrawals" class="text-4xl font-bold mt-2">0</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded shadow overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead class="bg-gray-50">
+            <tr>
+                <th class="p-3 text-left">Name</th>
+                <th class="p-3 text-left">Email</th>
+                <th class="p-3 text-left">Balance</th>
+                <th class="p-3 text-left">Status</th>
+            </tr>
+            </thead>
+            <tbody id="usersTable"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<script type="module">
+
+// ================= FIREBASE IMPORTS =================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { getFirestore, collection, query, where, onSnapshot }
+from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getDatabase, ref, set }
+from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+
+// ================= FIREBASE CONFIG =================
+const firebaseConfig = {
+  apiKey: "AIzaSyByIXhqEGYZhPTOcAh0U_1iL5K_zk5StHE",
+  authDomain: "adsincomezone.firebaseapp.com",
+  databaseURL: "https://adsincomezone-default-rtdb.firebaseio.com",
+  projectId: "adsincomezone",
+  storageBucket: "adsincomezone.firebasestorage.app",
+  messagingSenderId: "7481509327",
+  appId: "1:7481509327:web:9c5753f2523fe09bc03eba",
+  measurementId: "G-JPLVP7SJQH"
+};
+
+
+// ================= INITIALIZE =================
+const app = initializeApp(firebaseConfig);
+
+let analytics;
+if (typeof window !== "undefined") {
+    analytics = getAnalytics(app);
+}
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+const rtdb = getDatabase(app);
+
+
+// ================= ADMIN UID =================
+const ADMIN_UIDS = [
+    "5XlYAIUUH3WAWuVQKNppu4TZleo2"
+];
+
+
+// ================= ELEMENTS =================
+const loginView = document.getElementById("loginView");
+const adminPanel = document.getElementById("adminPanel");
+
+
+// ================= AUTH STATE =================
+onAuthStateChanged(auth, (user) => {
+
+    if (user && ADMIN_UIDS.includes(user.uid)) {
+
+        loginView.style.display = "none";
+        adminPanel.classList.remove("hidden");
+
+        loadDashboard();
+        loadUsers();
+
+        // Example Realtime DB write
+        set(ref(rtdb, "admin/lastLogin"), {
+            uid: user.uid,
+            time: new Date().toISOString()
+        });
+
+    } else {
+        loginView.style.display = "flex";
+        adminPanel.classList.add("hidden");
+    }
+
+});
+
+
+// ================= LOGIN =================
+document.getElementById("loginBtn").addEventListener("click", async () => {
+
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+
+        if (!ADMIN_UIDS.includes(cred.user.uid)) {
+            await signOut(auth);
+            alert("Unauthorized Access");
+        }
+
+    } catch (err) {
+        alert(err.message);
+    }
+
+});
+
+
+// ================= LOGOUT =================
+document.getElementById("logoutBtn").addEventListener("click", () => {
+    signOut(auth);
+});
+
+
+// ================= DASHBOARD =================
+function loadDashboard() {
+
+    onSnapshot(collection(db, "users"), snap => {
+        document.getElementById("totalUsers").textContent = snap.size;
+    });
+
+    const q = query(collection(db, "withdrawals"),
+        where("status", "==", "pending"));
+
+    onSnapshot(q, snap => {
+        document.getElementById("pendingWithdrawals").textContent = snap.size;
+    });
+
+}
+
+
+// ================= USERS TABLE =================
+function loadUsers() {
+
+    const table = document.getElementById("usersTable");
+
+    onSnapshot(collection(db, "users"), snapshot => {
+
+        table.innerHTML = "";
+
+        snapshot.forEach(doc => {
+
+            const user = doc.data();
+
+            table.innerHTML += `
+                <tr class="border-t">
+                    <td class="p-3">${user.name || "N/A"}</td>
+                    <td class="p-3">${user.email || "N/A"}</td>
+                    <td class="p-3">${user.balance || 0}</td>
+                    <td class="p-3">
+                        ${user.isBlocked ?
+                        '<span class="text-red-500 font-semibold">Blocked</span>' :
+                        '<span class="text-green-500 font-semibold">Active</span>'}
+                    </td>
+                </tr>
+            `;
+
+        });
+
+    });
+
+}
+
+</script>
+
+</body>
+</html>
